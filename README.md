@@ -1945,3 +1945,684 @@ if __name__ == "__main__":
     print("     • izmir_floor_analysis.png - Floor level trends")
 
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+"""
+World Map of Mean Indoor Radon Concentrations
+Fixed for GeoPandas 1.0+ - Uses direct download or local file
+Author: Based on Zeybek & Alkan (2026) methodology
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import warnings
+
+warnings.filterwarnings("ignore")
+
+# Try to import geopandas with fallback options
+try:
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    HAS_GEOPANDAS = True
+except ImportError:
+    HAS_GEOPANDAS = False
+    print("Warning: geopandas not installed. Install with: pip install geopandas")
+    print("Falling back to alternative visualization...")
+
+# ============================================================================
+# DATA: Mean Indoor Radon Concentrations (Bq/m³) by Country
+# Sources: WHO (2009), UNSCEAR (2000), Cinelli et al. (2019) European Atlas,
+#          national radon surveys, Zeybek & Alkan (2026)
+# ============================================================================
+
+radon_data = {
+    # Europe
+    "Turkey": 210.2,
+    "Czech Republic": 140.0,
+    "Finland": 120.0,
+    "Sweden": 108.0,
+    "Norway": 89.0,
+    "Iceland": 10.0,
+    "United Kingdom": 21.0,
+    "Ireland": 89.0,
+    "Netherlands": 23.0,
+    "Belgium": 48.0,
+    "Luxembourg": 70.0,
+    "France": 62.0,
+    "Germany": 49.0,
+    "Austria": 99.0,
+    "Italy": 70.0,
+    "Spain": 45.0,
+    "Portugal": 75.0,
+    "Greece": 55.0,
+    "Switzerland": 78.0,
+    "Poland": 49.0,
+    "Slovakia": 87.0,
+    "Hungary": 82.0,
+    "Romania": 95.0,
+    "Bulgaria": 75.0,
+    "Slovenia": 104.0,
+    "Croatia": 85.0,
+    "Bosnia and Herzegovina": 70.0,
+    "Serbia": 85.0,
+    "Montenegro": 80.0,
+    "Albania": 78.0,
+    "North Macedonia": 75.0,
+    "Moldova": 65.0,
+    "Ukraine": 45.0,
+    "Belarus": 40.0,
+    "Lithuania": 55.0,
+    "Latvia": 68.0,
+    "Estonia": 60.0,
+    "Russia": 55.0,
+    "Kosovo": 70.0,
+    # Asia
+    "China": 35.0,
+    "Japan": 15.5,
+    "South Korea": 53.0,
+    "India": 25.0,
+    "Pakistan": 30.0,
+    "Bangladesh": 25.0,
+    "Iran": 50.0,
+    "Iraq": 45.0,
+    "Saudi Arabia": 22.0,
+    "Israel": 35.0,
+    "Jordan": 35.0,
+    "Lebanon": 40.0,
+    "Syria": 38.0,
+    "Armenia": 55.0,
+    "Georgia": 45.0,
+    "Azerbaijan": 30.0,
+    "Kazakhstan": 40.0,
+    "Uzbekistan": 30.0,
+    "Turkmenistan": 28.0,
+    "Tajikistan": 35.0,
+    "Kyrgyzstan": 32.0,
+    "Afghanistan": 35.0,
+    "Nepal": 35.0,
+    "Bhutan": 30.0,
+    "Myanmar": 28.0,
+    "Thailand": 28.0,
+    "Vietnam": 25.0,
+    "Malaysia": 24.0,
+    "Indonesia": 20.0,
+    "Philippines": 28.0,
+    "Sri Lanka": 22.0,
+    "Mongolia": 25.0,
+    "Taiwan": 13.0,
+    "North Korea": 40.0,
+    "Singapore": 12.0,
+    "Cambodia": 25.0,
+    "Laos": 35.0,
+    "Yemen": 30.0,
+    "Oman": 25.0,
+    "United Arab Emirates": 20.0,
+    "Qatar": 18.0,
+    "Kuwait": 22.0,
+    # North America
+    "United States of America": 46.0,
+    "Canada": 42.0,
+    "Mexico": 25.0,
+    "United States": 46.0,
+    "Canada": 42.0,
+    "Mexico": 25.0,
+    "Greenland": 10.0,
+    # Central America & Caribbean
+    "Guatemala": 30.0,
+    "Honduras": 28.0,
+    "Nicaragua": 30.0,
+    "Costa Rica": 32.0,
+    "Panama": 28.0,
+    "Cuba": 25.0,
+    "Jamaica": 22.0,
+    "Dominican Republic": 20.0,
+    "Haiti": 25.0,
+    # South America
+    "Brazil": 35.0,
+    "Argentina": 32.0,
+    "Chile": 30.0,
+    "Peru": 28.0,
+    "Colombia": 30.0,
+    "Venezuela": 28.0,
+    "Ecuador": 25.0,
+    "Bolivia": 35.0,
+    "Paraguay": 30.0,
+    "Uruguay": 28.0,
+    "Guyana": 22.0,
+    "Suriname": 20.0,
+    # Africa
+    "Egypt": 25.0,
+    "Libya": 30.0,
+    "Tunisia": 28.0,
+    "Algeria": 32.0,
+    "Morocco": 28.0,
+    "South Africa": 45.0,
+    "Namibia": 38.0,
+    "Botswana": 35.0,
+    "Zambia": 35.0,
+    "Zimbabwe": 40.0,
+    "Mozambique": 28.0,
+    "Kenya": 25.0,
+    "Tanzania": 30.0,
+    "Uganda": 28.0,
+    "Rwanda": 35.0,
+    "Ethiopia": 30.0,
+    "Sudan": 28.0,
+    "Nigeria": 28.0,
+    "Ghana": 28.0,
+    "Ivory Coast": 26.0,
+    "Cameroon": 32.0,
+    "Angola": 28.0,
+    "Democratic Republic of the Congo": 30.0,
+    "Madagascar": 28.0,
+    # Oceania
+    "Australia": 11.0,
+    "New Zealand": 24.0,
+    "Papua New Guinea": 20.0,
+    "Fiji": 15.0,
+    "Solomon Islands": 18.0,
+}
+
+# ============================================================================
+# Risk classification (based on Zeybek & Alkan, 2026)
+# ============================================================================
+
+
+def get_risk_class(irc):
+    """Classify radon concentration into risk levels"""
+    if irc < 100:
+        return "Low (<100 Bq/m³)"
+    elif irc < 200:
+        return "Moderate (100-200 Bq/m³)"
+    elif irc < 300:
+        return "High (200-300 Bq/m³)"
+    else:
+        return "Very High (>300 Bq/m³)"
+
+
+# ============================================================================
+# Create map using geopandas (if available)
+# ============================================================================
+
+
+def create_map_with_geopandas():
+    """Create world map using geopandas"""
+    import urllib.request
+    import zipfile
+    import os
+
+    print("Downloading Natural Earth data (110m cultural vectors)...")
+
+    # Use Natural Earth GeoJSON directly from GitHub (more reliable)
+    url = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
+    geojson_path = "ne_110m_admin_0_countries.geojson"
+
+    try:
+        # Try to download GeoJSON file
+        urllib.request.urlretrieve(url, geojson_path)
+        world = gpd.read_file(geojson_path)
+        print("✓ Successfully loaded Natural Earth data")
+    except Exception as e:
+        print(f"Download failed: {e}")
+        print("Attempting fallback method...")
+        # Alternative: use built-in sample data
+        try:
+            from shapely.geometry import Polygon
+
+            world = gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
+        except:
+            print("Could not load map data. Plotting bar chart only...")
+            return None
+
+    # Clean country names for matching
+    world["name_clean"] = world["NAME"].str.strip()
+
+    # Add radon data
+    world["radon_bq_m3"] = world["NAME"].map(radon_data)
+    world["risk_class"] = world["radon_bq_m3"].apply(
+        lambda x: get_risk_class(x) if pd.notna(x) else "No data"
+    )
+
+    # Create visualization
+    colors = ["#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c"]
+    n_bins = 20
+    cmap = LinearSegmentedColormap.from_list("radon_cmap", colors, N=n_bins)
+
+    fig, ax = plt.subplots(1, 1, figsize=(20, 12))
+
+    # Plot the world map
+    world.plot(
+        column="radon_bq_m3",
+        ax=ax,
+        legend=True,
+        cmap=cmap,
+        edgecolor="black",
+        linewidth=0.3,
+        missing_kwds={"color": "lightgray", "label": "No data"},
+        legend_kwds={
+            "label": "Mean Indoor Radon Concentration (Bq/m³)",
+            "orientation": "horizontal",
+            "shrink": 0.7,
+            "pad": 0.05,
+            "aspect": 40,
+        },
+    )
+
+    # Add annotations for high-risk countries
+    high_risk = world[world["radon_bq_m3"] > 200].dropna(subset=["radon_bq_m3"])
+    for idx, row in high_risk.iterrows():
+        centroid = row["geometry"].centroid
+        ax.annotate(
+            f"{row['NAME']}\n{row['radon_bq_m3']:.0f}",
+            xy=(centroid.x, centroid.y),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8,
+            fontweight="bold",
+            color="darkred",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7),
+        )
+
+    ax.set_title(
+        "Global Distribution of Mean Indoor Radon Concentration (Bq/m³)\n"
+        "Data: WHO, UNSCEAR, European Radon Atlas, National Surveys\n"
+        "Risk classification: Zeybek & Alkan (2026)",
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Legend text box
+    risk_text = (
+        "Risk Classification (Zeybek & Alkan, 2026):\n"
+        "■ Low (<100 Bq/m³) - WHO optimal level\n"
+        "■ Moderate (100-200 Bq/m³) - Monitor periodically\n"
+        "■ High (200-300 Bq/m³) - Exceeds European reference\n"
+        "■ Very High (>300 Bq/m³) - Immediate mitigation"
+    )
+
+    props = dict(boxstyle="round", facecolor="wheat", alpha=0.85)
+    ax.text(
+        0.02,
+        0.02,
+        risk_text,
+        transform=ax.transAxes,
+        fontsize=9,
+        verticalalignment="bottom",
+        bbox=props,
+        family="monospace",
+    )
+
+    ax.text(
+        0.98,
+        0.01,
+        "Map: Natural Earth (110m) | Projection: WGS84\n"
+        "Turkey data: Zeybek & Alkan (2026) - Mean 210.2 Bq/m³",
+        transform=ax.transAxes,
+        fontsize=7,
+        horizontalalignment="right",
+        verticalalignment="bottom",
+        style="italic",
+        color="gray",
+    )
+
+    ax.set_axis_off()
+    plt.tight_layout()
+
+    return fig
+
+
+# ============================================================================
+# Alternative: Create a heatmap-style visualization without geopandas
+# ============================================================================
+
+
+def create_heatmap_without_geopandas():
+    """Create a stylized heatmap alternative when geopandas is not available"""
+
+    print("Creating heatmap visualization (geopandas not available)...")
+
+    # Create a grid of radon values by continent and region
+    continents = {
+        "Europe": [
+            "Turkey",
+            "Czech Republic",
+            "Finland",
+            "Sweden",
+            "Norway",
+            "Switzerland",
+            "Austria",
+            "Slovenia",
+            "Romania",
+            "Bulgaria",
+            "Poland",
+            "Germany",
+            "France",
+            "Italy",
+            "Spain",
+            "Portugal",
+            "United Kingdom",
+            "Ireland",
+            "Netherlands",
+            "Belgium",
+        ],
+        "Asia": [
+            "China",
+            "Japan",
+            "South Korea",
+            "India",
+            "Iran",
+            "Turkey",
+            "Armenia",
+            "Georgia",
+            "Kazakhstan",
+            "Russia",
+            "Israel",
+            "Jordan",
+            "Saudi Arabia",
+        ],
+        "North America": [
+            "United States of America",
+            "Canada",
+            "Mexico",
+            "Guatemala",
+            "Costa Rica",
+        ],
+        "South America": [
+            "Brazil",
+            "Argentina",
+            "Chile",
+            "Peru",
+            "Colombia",
+            "Venezuela",
+        ],
+        "Africa": [
+            "South Africa",
+            "Namibia",
+            "Zimbabwe",
+            "Zambia",
+            "Egypt",
+            "Morocco",
+            "Algeria",
+        ],
+        "Oceania": ["Australia", "New Zealand", "Papua New Guinea"],
+    }
+
+    # Calculate continent averages
+    continent_avgs = {}
+    for continent, countries in continents.items():
+        values = [radon_data.get(c, np.nan) for c in countries if c in radon_data]
+        if values:
+            continent_avgs[continent] = np.nanmean(values)
+
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    axes = axes.flatten()
+
+    colors_bar = ["#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c"]
+
+    for idx, (continent, avg_value) in enumerate(continent_avgs.items()):
+        ax = axes[idx]
+
+        # Get countries in this continent with available data
+        countries_in_continent = [
+            c for c in continents.get(continent, []) if c in radon_data
+        ]
+        values = [radon_data[c] for c in countries_in_continent]
+        sorted_pairs = sorted(zip(values, countries_in_continent), reverse=True)[:10]
+        values_sorted, countries_sorted = (
+            zip(*sorted_pairs) if sorted_pairs else ([], [])
+        )
+
+        if values_sorted:
+            # Color bars based on risk level
+            bar_colors = []
+            for v in values_sorted:
+                if v >= 300:
+                    bar_colors.append("#d7191c")
+                elif v >= 200:
+                    bar_colors.append("#fdae61")
+                elif v >= 100:
+                    bar_colors.append("#ffffbf")
+                else:
+                    bar_colors.append("#abd9e9")
+
+            y_pos = range(len(countries_sorted))
+            bars = ax.barh(y_pos, values_sorted, color=bar_colors)
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(countries_sorted, fontsize=8)
+            ax.set_xlabel("Radon (Bq/m³)", fontsize=10)
+            ax.set_title(
+                f"{continent}\nMean: {avg_value:.1f} Bq/m³",
+                fontsize=11,
+                fontweight="bold",
+            )
+            ax.axvline(
+                x=100,
+                color="green",
+                linestyle="--",
+                linewidth=1,
+                alpha=0.7,
+                label="WHO ref (100)",
+            )
+            ax.axvline(
+                x=200,
+                color="orange",
+                linestyle="--",
+                linewidth=1,
+                alpha=0.7,
+                label="EU ref (200)",
+            )
+            ax.axvline(
+                x=300,
+                color="red",
+                linestyle="--",
+                linewidth=1,
+                alpha=0.7,
+                label="Very high (300)",
+            )
+        else:
+            ax.text(
+                0.5,
+                0.5,
+                "No Data Available",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+
+        ax.grid(axis="x", alpha=0.3)
+
+    # Hide unused subplot
+    axes[5].set_visible(False)
+
+    plt.suptitle(
+        "Mean Indoor Radon Concentration by Country and Continent\nData compiled from WHO, UNSCEAR, European Radon Atlas",
+        fontsize=14,
+        fontweight="bold",
+        y=1.02,
+    )
+    plt.tight_layout()
+    return fig
+
+
+# ============================================================================
+# Create bar chart of top countries (always works)
+# ============================================================================
+
+
+def create_top_countries_chart():
+    """Create bar chart of top 20 countries by radon concentration"""
+
+    sorted_countries = sorted(radon_data.items(), key=lambda x: x[1], reverse=True)
+    top20 = sorted_countries[:20]
+    countries_top20 = [c[0] for c in top20]
+    values_top20 = [c[1] for c in top20]
+
+    colors_top20 = []
+    for v in values_top20:
+        if v >= 300:
+            colors_top20.append("#d7191c")
+        elif v >= 200:
+            colors_top20.append("#fdae61")
+        elif v >= 100:
+            colors_top20.append("#ffffbf")
+        else:
+            colors_top20.append("#abd9e9")
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    bars = ax.barh(countries_top20[::-1], values_top20[::-1], color=colors_top20[::-1])
+
+    ax.axvline(
+        x=100,
+        color="green",
+        linestyle="--",
+        linewidth=2,
+        label="WHO reference (100 Bq/m³)",
+        alpha=0.8,
+    )
+    ax.axvline(
+        x=200,
+        color="orange",
+        linestyle="--",
+        linewidth=2,
+        label="EU reference (200 Bq/m³)",
+        alpha=0.8,
+    )
+    ax.axvline(
+        x=300,
+        color="red",
+        linestyle="--",
+        linewidth=2,
+        label="Very high risk threshold (300 Bq/m³)",
+        alpha=0.8,
+    )
+
+    ax.set_xlabel("Mean Indoor Radon Concentration (Bq/m³)", fontsize=12)
+    ax.set_title(
+        "Top 20 Countries by Mean Indoor Radon Concentration\nZeybek & Alkan (2026) Risk Classification",
+        fontsize=14,
+        fontweight="bold",
+    )
+    ax.legend(loc="lower right", fontsize=10)
+    ax.grid(axis="x", alpha=0.3)
+
+    # Add value labels
+    for i, v in enumerate(values_top20[::-1]):
+        ax.text(v + 5, i, f"{v:.0f}", va="center", fontsize=9, fontweight="bold")
+
+    ax.set_xlim(0, max(values_top20) + 50)
+
+    plt.tight_layout()
+    return fig
+
+
+# ============================================================================
+# Main execution
+# ============================================================================
+
+if __name__ == "__main__":
+    print("=" * 70)
+    print("WORLD INDOOR RADON CONCENTRATION ANALYSIS")
+    print("Based on Zeybek & Alkan (2026) methodology")
+    print("=" * 70)
+
+    # Print statistics
+    radon_values = [v for v in radon_data.values() if v is not None]
+    print(f"\nNumber of countries with data: {len(radon_values)}")
+    print(f"Global mean IRC: {np.mean(radon_values):.1f} Bq/m³")
+    print(f"Global median IRC: {np.median(radon_values):.1f} Bq/m³")
+    print(f"Minimum: {np.min(radon_values):.1f} Bq/m³")
+    print(
+        f"Maximum: {np.max(radon_values):.1f} Bq/m³ ({max(radon_data, key=radon_data.get)})"
+    )
+
+    # Risk distribution
+    low = sum(1 for v in radon_values if v < 100)
+    moderate = sum(1 for v in radon_values if 100 <= v < 200)
+    high = sum(1 for v in radon_values if 200 <= v < 300)
+    very_high = sum(1 for v in radon_values if v >= 300)
+    total = len(radon_values)
+
+    print(f"\nRisk Classification Distribution (Zeybek & Alkan, 2026):")
+    print(f"  Low (<100 Bq/m³):       {low} countries ({low / total * 100:.1f}%)")
+    print(
+        f"  Moderate (100-200):      {moderate} countries ({moderate / total * 100:.1f}%)"
+    )
+    print(f"  High (200-300):          {high} countries ({high / total * 100:.1f}%)")
+    print(
+        f"  Very High (>300):        {very_high} countries ({very_high / total * 100:.1f}%)"
+    )
+
+    print(f"\nTop 10 Countries with Highest Indoor Radon:")
+    sorted_countries = sorted(radon_data.items(), key=lambda x: x[1], reverse=True)
+    for i, (country, value) in enumerate(sorted_countries[:10], 1):
+        risk = get_risk_class(value)
+        risk_symbol = (
+            "🔴"
+            if value >= 300
+            else "🟠"
+            if value >= 200
+            else "🟡"
+            if value >= 100
+            else "🟢"
+        )
+        print(f"  {i:2}. {risk_symbol} {country:30} {value:6.1f} Bq/m³  [{risk}]")
+
+    # Create visualizations
+    print("\n" + "=" * 70)
+    print("GENERATING VISUALIZATIONS")
+    print("=" * 70)
+
+    # Always create the top countries bar chart
+    fig_bar = create_top_countries_chart()
+    plt.savefig(
+        "top20_radon_countries.png", dpi=300, bbox_inches="tight", facecolor="white"
+    )
+    print("✓ Saved: 'top20_radon_countries.png'")
+    plt.show()
+
+    # Try to create world map if geopandas is available
+    if HAS_GEOPANDAS:
+        try:
+            fig_map = create_map_with_geopandas()
+            if fig_map:
+                fig_map.savefig(
+                    "world_indoor_radon_map.png",
+                    dpi=300,
+                    bbox_inches="tight",
+                    facecolor="white",
+                )
+                print("✓ Saved: 'world_indoor_radon_map.png'")
+                plt.show(fig_map)
+        except Exception as e:
+            print(f"Could not create world map: {e}")
+            print("Creating heatmap alternative instead...")
+            fig_heat = create_heatmap_without_geopandas()
+            fig_heat.savefig(
+                "world_radon_heatmap.png",
+                dpi=300,
+                bbox_inches="tight",
+                facecolor="white",
+            )
+            print("✓ Saved: 'world_radon_heatmap.png'")
+            plt.show(fig_heat)
+    else:
+        print("Geopandas not available. Creating continent-based heatmap...")
+        fig_heat = create_heatmap_without_geopandas()
+        fig_heat.savefig(
+            "world_radon_heatmap.png", dpi=300, bbox_inches="tight", facecolor="white"
+        )
+        print("✓ Saved: 'world_radon_heatmap.png'")
+        plt.show(fig_heat)
+
+    print("\n✓ Analysis complete!")
+    print("\nInstallation tip: To install geopandas for full map visualization, use:")
+    print("  pip install geopandas")
+    print("  or")
+    print("  conda install geopandas -c conda-forge")
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
