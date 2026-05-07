@@ -1946,5 +1946,196 @@ if __name__ == "__main__":
 
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
+import plotly.express as px
+import pandas as pd
 
+# Data from Table 4 (Country, Mean Indoor Radon Bq/m³)
+data = {
+    'Country': ['Australia', 'Austria', 'Azerbaijan', 'Belgium', 'Canada', 'China',
+                'Czech Republic', 'Denmark', 'Ecuador', 'Finland', 'France', 'Germany',
+                'Ghana', 'Greece', 'Hungary', 'Iceland', 'India', 'Iran', 'Iraq',
+                'Ireland', 'Italy', 'Japan', 'Jordan', 'Lebanon', 'Luxembourg', 'Mexico',
+                'Netherlands', 'Nigeria', 'Norway', 'Oman', 'Pakistan', 'Peru',
+                'Philippines', 'Poland', 'Portugal', 'Republic of Korea', 'Romania',
+                'Russia', 'Saudi Arabia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland',
+                'Syria', 'Turkey', 'United Kingdom', 'USA', 'Venezuela'],
+    'Radon_Bq_m3': [11, 99, 84, 48, 28, 43, 140, 59, 94, 120, 89, 49, 35, 55, 82, 13,
+                    48, 117, 116, 89, 70, 16, 111, 24, 70, 140, 23, 39, 77, 21, 100, 32,
+                    43, 70, 62, 53, 126, 48, 32, 87, 90, 90, 78, 83, 81, 20, 46, 53]
+}
+
+df = pd.DataFrame(data)
+
+# Create choropleth map
+fig = px.choropleth(df,
+                    locations='Country',
+                    locationmode='country names',
+                    color='Radon_Bq_m3',
+                    hover_name='Country',
+                    color_continuous_scale='Reds',
+                    range_color=[0, 150],
+                    title='Global Indoor Radon Concentration (Bq/m³)',
+                    labels={'Radon_Bq_m3': 'Mean Radon (Bq/m³)'})
+
+fig.update_layout(
+    geo=dict(showframe=False, showcoastlines=True, projection_type='natural earth'),
+    width=1000,
+    height=600
+)
+
+fig.show()
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+import geopandas as gpd
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+import numpy as np
+
+# Data
+d = {
+    "Australia": 11,
+    "Austria": 99,
+    "Azerbaijan": 84,
+    "Belgium": 48,
+    "Canada": 28,
+    "China": 43,
+    "Czech Republic": 140,
+    "Denmark": 59,
+    "Ecuador": 94,
+    "Finland": 120,
+    "France": 89,
+    "Germany": 49,
+    "Ghana": 35,
+    "Greece": 55,
+    "Hungary": 82,
+    "Iceland": 13,
+    "India": 48,
+    "Iran": 117,
+    "Iraq": 116,
+    "Ireland": 89,
+    "Italy": 70,
+    "Japan": 16,
+    "Jordan": 111,
+    "Lebanon": 24,
+    "Luxembourg": 70,
+    "Mexico": 140,
+    "Netherlands": 23,
+    "Nigeria": 39,
+    "Norway": 77,
+    "Oman": 21,
+    "Pakistan": 100,
+    "Peru": 32,
+    "Philippines": 43,
+    "Poland": 70,
+    "Portugal": 62,
+    "Republic of Korea": 53,
+    "Romania": 126,
+    "Russia": 48,
+    "Saudi Arabia": 32,
+    "Slovenia": 87,
+    "Spain": 90,
+    "Sweden": 90,
+    "Switzerland": 78,
+    "Syria": 83,
+    "Turkey": 81,
+    "United Kingdom": 20,
+    "USA": 46,
+    "Venezuela": 53,
+}
+
+# Load map
+world = gpd.read_file(
+    "https://naturalearth.s3.amazonaws.com/110m_cultural/ne_110m_admin_0_countries.zip"
+)
+
+# Merge data
+world = world.merge(
+    pd.Series(d).rename("Radon"), left_on="NAME", right_index=True, how="inner"
+)
+
+# Create figure
+fig, ax = plt.subplots(figsize=(16, 10))
+
+# Plot map
+world.plot(
+    column="Radon",
+    cmap="Reds",
+    legend=True,
+    edgecolor="black",
+    linewidth=0.3,
+    ax=ax,
+    legend_kwds={"label": "Mean Indoor Radon (Bq/m³)", "shrink": 0.6, "pad": 0.02},
+)
+
+# Add grid lines (latitude/longitude)
+ax.grid(True, color="lightgray", linestyle="--", linewidth=0.5, alpha=0.7)
+ax.set_xlabel("Longitude", fontsize=10)
+ax.set_ylabel("Latitude", fontsize=10)
+
+# Add scale bar (bottom right)
+xlim = ax.get_xlim()
+ylim = ax.get_ylim()
+scale_length_deg = 30  # degrees longitude (approx 3000 km at equator)
+scale_km = 3330  # approximate km for 30 degrees at equator
+scale_x = xlim[1] - 25  # position from right edge
+scale_y = ylim[0] + 8  # position from bottom
+
+# Draw scale bar
+ax.plot([scale_x, scale_x + scale_length_deg], [scale_y, scale_y], "k-", linewidth=1)
+ax.plot([scale_x, scale_x], [scale_y - 0.5, scale_y + 0.5], "k-", linewidth=1)
+ax.plot(
+    [scale_x + scale_length_deg, scale_x + scale_length_deg],
+    [scale_y - 0.5, scale_y + 0.5],
+    "k-",
+    linewidth=1,
+)
+ax.text(
+    scale_x + scale_length_deg / 2,
+    scale_y - 4.5,
+    f"{scale_km} km",
+    ha="center",
+    fontsize=9,
+    fontweight="bold",
+)
+
+# Add North Arrow (top right)
+arrow_x = xlim[1] - 8
+arrow_y = ylim[1] - 8
+ax.annotate(
+    "N",
+    xy=(arrow_x, arrow_y),
+    xytext=(arrow_x, arrow_y - 3),
+    arrowprops=dict(facecolor="black", width=2, headwidth=5, headlength=-18),
+    ha="center",
+    va="bottom",
+    fontsize=14,
+    fontweight="bold",
+)
+
+# Add compass rose circle
+circle = plt.Circle(
+    (arrow_x, arrow_y - 1.5), 1.5, fill=False, edgecolor="black", linewidth=0.1
+)
+ax.add_patch(circle)
+
+# Title
+ax.set_title(
+    "Global Indoor Radon Concentration (Table 4)",
+    fontsize=16,
+    fontweight="bold",
+    pad=15,
+)
+
+# Remove default axis ticks but keep grid labels
+ax.tick_params(axis="both", which="major", labelsize=8)
+
+# Save
+plt.savefig("radon_map_with_north_scale.jpg", dpi=300, bbox_inches="tight")
+plt.close()
+
+print("Map saved as 'radon_map_with_north_scale.jpg'")
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
